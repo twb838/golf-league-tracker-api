@@ -6,29 +6,35 @@ from typing import Optional, List
 
 
 class PlayerBase(BaseModel):
+    id: int
     first_name: str
     last_name: str
-    team_id: Optional[int] = None
     league_average: Optional[float] = None
+
+    class Config:
+        from_attributes = True
 
 class PlayerCreate(PlayerBase):
     pass
 
 class Player(PlayerBase):
-    id: int
     created_at: datetime
     
     class Config:
         from_attributes = True
 
 class TeamBase(BaseModel):
+    id: int
     name: str
+    players: List[PlayerBase]
+
+    class Config:
+        from_attributes = True
 
 class TeamCreate(TeamBase):
     players: List[PlayerCreate]
 
 class Team(TeamBase):
-    id: int
     created_at: datetime
     
     class Config:
@@ -174,10 +180,9 @@ class MatchDetail(BaseModel):
     week_number: int
     team1_id: int
     team2_id: int
-    date: date
-    team1: TeamDetail
-    team2: TeamDetail
-    league: dict  # Simplified for brevity
+    date: datetime
+    team1: TeamBase
+    team2: TeamBase
 
     class Config:
         from_attributes = True

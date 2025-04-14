@@ -1,29 +1,35 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from typing import List
 from ..database import get_db
 from ..models import schemas
-from ..models.schemas import MatchDetail, PlayerScore
-from app.models.base.models import *
+from ..models.base.models import Match, League, Team, PlayerScore, HoleScore
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
-@router.get("/{match_id}", response_model=MatchDetail)
+@router.get("/{match_id}", response_model=schemas.MatchDetail)
 async def get_match(match_id: int, db: Session = Depends(get_db)):
     """Get match details including teams and players"""
-    match = db.query(Match)\
-        .options(
-            joinedload(Match.league).joinedload(League.course),
-            joinedload(Match.team1).joinedload(Team.players),
-            joinedload(Match.team2).joinedload(Team.players)
-        )\
-        .filter(Match.id == match_id)\
-        .first()
+    try:
+        match = db.query(Match)\
+            .options(
+                joinedload(Match.league).joinedload(League.course),
+                joinedload(Match.team1).joinedload(Team.players),
+                joinedload(Match.team2).joinedload(Team.players)
+            )\
+            .filter(Match.id == match_id)\
+            .first()
+        
+        if not match:
+            raise HTTPException(status_code=404, detail=f"Match with id {match_id} not found")
+        
+        return match
     
-    if not match:
-        raise HTTPException(status_code=404, detail="Match not found")
-    
-    return match
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch match details: {str(e)}"
+        )
 
 @router.post("/{match_id}/scores", response_model=List[schemas.PlayerScore])
 async def submit_scores(
