@@ -19,6 +19,15 @@ class Match(Base):
     team2 = relationship("Team", foreign_keys=[team2_id], back_populates="away_matches")
     player_scores = relationship("PlayerScore", back_populates="match")
 
+    @property
+    def course_id(self):
+        return self.league.course_id if self.league else None
+
+    @course_id.setter
+    def course_id(self, value):
+        if self.league:
+            self.league.course_id = value
+
 class PlayerScore(Base):
     __tablename__ = "player_scores"
 

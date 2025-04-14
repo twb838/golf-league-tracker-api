@@ -63,13 +63,21 @@ class Score(ScoreBase):
         from_attributes = True
 
 class HoleBase(BaseModel):
-    number: int = Field(ge=1, le=18)
-    par: int = Field(ge=3, le=5)
-    handicap: int = Field(ge=1, le=18)
+    id: int
+    number: int
+    par: int
+    handicap: int
+
+    class Config:
+        from_attributes = True
 
 class CourseBase(BaseModel):
+    id: int
     name: str
     holes: List[HoleBase]
+
+    class Config:
+        from_attributes = True
 
 class CourseCreate(CourseBase):
     pass
@@ -90,10 +98,14 @@ class CourseUpdate(BaseModel):
 
 
 class LeagueBase(BaseModel):
+    id: int
     name: str
-    course_id: int
+    course_id: int  # Changed from course object to course_id
     number_of_weeks: int = Field(ge=1, le=15)
     start_date: date
+
+    class Config:
+        from_attributes = True
 
 class LeagueCreate(LeagueBase):
     team_ids: List[int]
@@ -183,6 +195,8 @@ class MatchDetail(BaseModel):
     date: datetime
     team1: TeamBase
     team2: TeamBase
+    league: LeagueBase
+    course_id: int  # Added course_id
 
     class Config:
         from_attributes = True

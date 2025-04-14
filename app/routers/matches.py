@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 from ..database import get_db
 from ..models import schemas
-from ..models.base.models import Match, League, Team, PlayerScore, HoleScore
+from ..models.base.models import Match, League, Team, PlayerScore, HoleScore, Course
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
@@ -11,9 +11,10 @@ router = APIRouter(prefix="/matches", tags=["matches"])
 async def get_match(match_id: int, db: Session = Depends(get_db)):
     """Get match details including teams and players"""
     try:
+        # Load match with all relationships
         match = db.query(Match)\
             .options(
-                joinedload(Match.league).joinedload(League.course),
+                joinedload(Match.league),
                 joinedload(Match.team1).joinedload(Team.players),
                 joinedload(Match.team2).joinedload(Team.players)
             )\
@@ -21,10 +22,30 @@ async def get_match(match_id: int, db: Session = Depends(get_db)):
             .first()
         
         if not match:
-            raise HTTPException(status_code=404, detail=f"Match with id {match_id} not found")
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Match with id {match_id} not found"
+            )
+
+        if not match.league:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No league found for match {match_id}"
+            )
+            
+        if not match.league.course_id:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No course assigned to league {match.league.id}"
+            )
+
+        # Add course_id to the response
+        match.course_id = match.league.course_id
         
         return match
     
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
