@@ -211,32 +211,8 @@ class HoleScoreBase(BaseModel):
     hole_id: int
     strokes: int
 
-class HoleScoreCreate(HoleScoreBase):
-    pass
-
-class HoleScore(HoleScoreBase):
-    id: int
-    player_score_id: int
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
 class PlayerScoreBase(BaseModel):
-    player_id: int
-    match_id: int
     hole_scores: List[HoleScoreBase]
-
-class PlayerScoreCreate(PlayerScoreBase):
-    pass
-
-class PlayerScore(PlayerScoreBase):
-    id: int
-    created_at: datetime
-    hole_scores: List[HoleScore]
-
-    class Config:
-        from_attributes = True
 
 class DeleteWeekResponse(BaseModel):
     message: str
@@ -258,6 +234,57 @@ class DeleteMatchResponse(BaseModel):
 
 class WeekMatchCreate(BaseModel):
     date: datetime
+
+    class Config:
+        from_attributes = True
+
+class HoleScore(BaseModel):
+    hole_id: int
+    strokes: int
+
+class PlayerScore(BaseModel):
+    player_id: int
+    scores: List[HoleScore]
+
+class MatchScores(BaseModel):
+    match_id: int
+    player_scores: List[PlayerScore]
+
+class HoleScoreCreate(BaseModel):
+    hole_id: int
+    strokes: int
+
+class PlayerScoreCreate(BaseModel):
+    player_id: int
+    scores: List[HoleScoreCreate]
+
+    class Config:
+        from_attributes = True
+
+class HoleScoreResponse(BaseModel):
+    id: int
+    hole_id: int
+    strokes: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class PlayerScoreResponse(BaseModel):
+    id: int
+    player_id: int
+    match_id: int
+    hole_scores: List[HoleScoreResponse]  # Changed from scores to hole_scores to match model
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class MatchScoreResponse(BaseModel):
+    status: str
+    message: str
+    match_id: int
+    scores: List[PlayerScoreResponse]
 
     class Config:
         from_attributes = True

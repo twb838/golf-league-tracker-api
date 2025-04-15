@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 from ..database import get_db
 from ..models import schemas
+from ..models.schemas import PlayerScoreCreate
 from ..models.base.models import Match, League, Team, PlayerScore, HoleScore, Course
 
 router = APIRouter(prefix="/matches", tags=["matches"])
@@ -52,49 +53,65 @@ async def get_match(match_id: int, db: Session = Depends(get_db)):
             detail=f"Failed to fetch match details: {str(e)}"
         )
 
-@router.post("/{match_id}/scores", response_model=List[schemas.PlayerScore])
-async def submit_scores(
-    match_id: int, 
-    scores: List[schemas.PlayerScoreCreate],
+@router.post("/{match_id}/scores", response_model=schemas.MatchScoreResponse)
+async def submit_match_scores(
+    match_id: int,
+    player_scores: List[schemas.PlayerScoreCreate],
     db: Session = Depends(get_db)
 ):
-    """Submit scores for a match"""
-    match = db.query(Match).filter(Match.id == match_id).first()
-    if not match:
-        raise HTTPException(status_code=404, detail="Match not found")
-
-    created_scores = []
+    """Submit or update scores for a match"""
     try:
-        for score_data in scores:
-            # Create player score
-            player_score = PlayerScore(
-                match_id=match_id,
-                player_id=score_data.player_id
-            )
-            db.add(player_score)
-            db.flush()  # Get the ID
+        # Verify match exists
+        match = db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
 
-            # Create hole scores
-            for hole_score in score_data.hole_scores:
-                db_hole_score = HoleScore(
-                    player_score_id=player_score.id,
+        created_scores = []
+        for player_score in player_scores:
+            # Upsert player score with relationship loading
+            db_player_score = db.query(PlayerScore).filter(
+                PlayerScore.match_id == match_id,
+                PlayerScore.player_id == player_score.player_id
+            ).first()
+
+            if not db_player_score:
+                db_player_score = PlayerScore(
+                    match_id=match_id,
+                    player_id=player_score.player_id
+                )
+                db.add(db_player_score)
+                db.flush()
+
+            # Upsert hole scores
+            for hole_score in player_score.scores:
+                db.merge(HoleScore(
+                    player_score_id=db_player_score.id,
                     hole_id=hole_score.hole_id,
                     strokes=hole_score.strokes
-                )
-                db.add(db_hole_score)
+                ))
             
-            created_scores.append(player_score)
+            created_scores.append(db_player_score)
 
+        # Update match status
+        match.status = "completed"
         db.commit()
-        
-        # Refresh to get all relationships
-        for score in created_scores:
-            db.refresh(score)
-        
-        return created_scores
+
+        # Refresh all scores with relationships loaded
+        refreshed_scores = db.query(PlayerScore)\
+            .options(joinedload(PlayerScore.hole_scores))\
+            .filter(PlayerScore.id.in_([score.id for score in created_scores]))\
+            .all()
+
+        return {
+            "status": "success",
+            "message": "Scores submitted successfully",
+            "match_id": match_id,
+            "scores": refreshed_scores
+        }
+
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{match_id}", response_model=schemas.DeleteMatchResponse)
 async def delete_match(match_id: int, db: Session = Depends(get_db)):

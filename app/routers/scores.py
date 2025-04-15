@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 from typing import List
-from ..database import db
-from datetime import datetime
-from app.models.base.models import *
+from ..database import get_db
+from ..models import schemas
+from ..models.base.models import PlayerScore, HoleScore, Match, Player
 
 router = APIRouter(prefix="/scores", tags=["scores"])
 
