@@ -1,6 +1,6 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, DateTime, Date, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, DateTime, Date, ForeignKey, func
+from sqlalchemy.orm import relationship, object_session
 from . import Base
 
 class Match(Base):

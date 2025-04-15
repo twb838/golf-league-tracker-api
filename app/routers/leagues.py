@@ -6,9 +6,9 @@ from ..models import schemas
 from ..models.schemas import LeagueCreate, MatchResponse, MatchCreate
 from app.models.base.models import *
 
-router = APIRouter()
+router = APIRouter(prefix="/leagues", tags=["leagues"])
 
-@router.post("/leagues/", response_model=schemas.League)
+@router.post("/", response_model=schemas.League)
 async def create_league(league: LeagueCreate, db: Session = Depends(get_db)):
     # Validate team count
     if len(league.team_ids) < 2 or len(league.team_ids) > 30:
@@ -38,7 +38,7 @@ async def create_league(league: LeagueCreate, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/leagues/", response_model=List[schemas.League])
+@router.get("/", response_model=List[schemas.League])
 async def get_leagues(db: Session = Depends(get_db)):
     try:
         leagues = db.query(League).all()
@@ -46,14 +46,14 @@ async def get_leagues(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/leagues/{league_id}", response_model=schemas.League)
+@router.get("/{league_id}", response_model=schemas.League)
 async def get_league(league_id: int, db: Session = Depends(get_db)):
     league = db.query(League).filter(League.id == league_id).first()
     if not league:
         raise HTTPException(status_code=404, detail="League not found")
     return league
 
-@router.delete("/leagues/{league_id}")
+@router.delete("/{league_id}")
 async def delete_league(league_id: int, db: Session = Depends(get_db)):
     # Check if league exists
     league = db.query(League).filter(League.id == league_id).first()
@@ -73,7 +73,7 @@ async def delete_league(league_id: int, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.put("/leagues/{league_id}", response_model=schemas.League)
+@router.put("/{league_id}", response_model=schemas.League)
 async def update_league(league_id: int, league_update: schemas.LeagueUpdate, db: Session = Depends(get_db)):
     # Check if league exists
     db_league = db.query(League).filter(League.id == league_id).first()
@@ -91,7 +91,6 @@ async def update_league(league_id: int, league_update: schemas.LeagueUpdate, db:
         db.query(League).filter(League.id == league_id).update({
             League.name: league_update.name,
             League.course_id: league_update.course_id,
-            League.number_of_weeks: league_update.number_of_weeks,
             League.start_date: league_update.start_date
         })
 
@@ -112,7 +111,7 @@ async def update_league(league_id: int, league_update: schemas.LeagueUpdate, db:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/leagues/{league_id}", response_model=schemas.LeagueDetails)
+@router.get("/{league_id}", response_model=schemas.LeagueDetails)
 async def get_league_details(league_id: int, db: Session = Depends(get_db)):
     # Load league with joined team data
     league = db.query(League).options(
@@ -135,12 +134,57 @@ async def get_league_details(league_id: int, db: Session = Depends(get_db)):
         "teams": teams
     }
 
-@router.get("/leagues/{league_id}/matches", response_model=List[MatchResponse])
+@router.get("/{league_id}/matches", response_model=List[MatchResponse])
 async def get_league_matches(league_id: int, db: Session = Depends(get_db)):
     matches = db.query(Match).filter(Match.league_id == league_id).all()
     return matches
 
-@router.post("/leagues/{league_id}/matches", response_model=MatchResponse)
+@router.get("/{league_id}/matches/week/{week_number}", response_model=List[schemas.MatchResponse])
+async def get_league_week_matches(
+    league_id: int,
+    week_number: int,
+    db: Session = Depends(get_db)
+):
+    """Get all matches for a specific week in a league"""
+    try:
+        # Check if league exists
+        league = db.query(League).filter(League.id == league_id).first()
+        if not league:
+            raise HTTPException(
+                status_code=404,
+                detail=f"League with id {league_id} not found"
+            )
+
+        # Get matches for the specific week
+        matches = db.query(Match)\
+            .options(
+                joinedload(Match.team1),
+                joinedload(Match.team2)
+            )\
+            .filter(
+                Match.league_id == league_id,
+                Match.week_number == week_number
+            )\
+            .order_by(Match.id)\
+            .all()
+
+        if not matches:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No matches found for week {week_number}"
+            )
+
+        return matches
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch matches: {str(e)}"
+        )
+
+@router.post("/{league_id}/matches", response_model=MatchResponse)
 async def create_match(
     league_id: int, 
     match: MatchCreate, 
@@ -181,23 +225,35 @@ async def create_match(
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.post("/leagues/{league_id}/matches/batch", response_model=List[schemas.BatchMatchResponse])
+@router.post("/{league_id}/matches/batch", response_model=List[schemas.BatchMatchResponse])
 async def create_matches(
     league_id: int,
-    request: dict,
+    request: schemas.BatchMatchRequest,
     db: Session = Depends(get_db)
 ):
-    matches = request.get("matches", [])
+    """Create multiple matches for a league"""
     created_matches = []
 
     try:
-        for match_data in matches:
+        # Verify league exists
+        league = db.query(League).filter(League.id == league_id).first()
+        if not league:
+            raise HTTPException(status_code=404, detail="League not found")
+
+        for match_data in request.matches:
+            # Validate week number
+            if not isinstance(match_data.week_number, int) or match_data.week_number < 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid week number: {match_data.week_number}"
+                )
+
             db_match = Match(
                 league_id=league_id,
-                week_number=match_data["week_number"],
-                team1_id=match_data["team1_id"],
-                team2_id=match_data["team2_id"],
-                date=match_data["date"]
+                week_number=match_data.week_number,
+                team1_id=match_data.team1_id,
+                team2_id=match_data.team2_id,
+                date=match_data.date
             )
             db.add(db_match)
             created_matches.append(db_match)
@@ -207,6 +263,111 @@ async def create_matches(
             db.refresh(match)
         
         return created_matches
+
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.delete("/{league_id}/weeks/{week_number}", response_model=schemas.DeleteWeekResponse)
+async def delete_week(
+    league_id: int, 
+    week_number: int, 
+    db: Session = Depends(get_db)
+):
+    """Delete all matches for a specific week in a league"""
+    try:
+        # Check if league exists
+        league = db.query(League).filter(League.id == league_id).first()
+        if not league:
+            raise HTTPException(
+                status_code=404,
+                detail=f"League with id {league_id} not found"
+            )
+
+        # Find all matches for this week
+        matches = db.query(Match).filter(
+            Match.league_id == league_id,
+            Match.week_number == week_number
+        ).all()
+
+        if not matches:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No matches found for week {week_number}"
+            )
+
+        # Delete all player scores and hole scores for these matches
+        for match in matches:
+            # Get all player scores for this match
+            player_scores = db.query(PlayerScore).filter(
+                PlayerScore.match_id == match.id
+            ).all()
+
+            for score in player_scores:
+                # Delete hole scores first
+                db.query(HoleScore).filter(
+                    HoleScore.player_score_id == score.id
+                ).delete()
+
+            # Delete player scores
+            db.query(PlayerScore).filter(
+                PlayerScore.match_id == match.id
+            ).delete()
+
+        # Delete the matches
+        deleted_count = db.query(Match).filter(
+            Match.league_id == league_id,
+            Match.week_number == week_number
+        ).delete()
+
+        db.commit()
+
+        return {
+            "message": f"Successfully deleted week {week_number} matches",
+            "deleted_count": deleted_count,
+            "week_number": week_number,
+            "league_id": league_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete week: {str(e)}"
+        )
+
+@router.get("/{league_id}/weeks", response_model=List[int])
+async def get_league_weeks(league_id: int, db: Session = Depends(get_db)):
+    """Get all week numbers for matches in a league"""
+    try:
+        # Check if league exists
+        league = db.query(League).filter(League.id == league_id).first()
+        if not league:
+            raise HTTPException(
+                status_code=404,
+                detail=f"League with id {league_id} not found"
+            )
+
+        # Get distinct week numbers for this league
+        weeks = db.query(Match.week_number)\
+            .filter(Match.league_id == league_id)\
+            .distinct()\
+            .order_by(Match.week_number)\
+            .all()
+        
+        # Extract week numbers from result tuples
+        week_numbers = [week[0] for week in weeks]
+        
+        return week_numbers
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch league weeks: {str(e)}"
+        )

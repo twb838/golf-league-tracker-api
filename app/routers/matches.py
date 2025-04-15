@@ -95,3 +95,51 @@ async def submit_scores(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.delete("/{match_id}", response_model=schemas.DeleteMatchResponse)
+async def delete_match(match_id: int, db: Session = Depends(get_db)):
+    """Delete a match and all associated scores"""
+    try:
+        # Check if match exists
+        match = db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Match with id {match_id} not found"
+            )
+
+        # Get all player scores for this match
+        player_scores = db.query(PlayerScore).filter(
+            PlayerScore.match_id == match_id
+        ).all()
+
+        # Delete hole scores first (child records)
+        for score in player_scores:
+            db.query(HoleScore).filter(
+                HoleScore.player_score_id == score.id
+            ).delete()
+
+        # Delete player scores
+        db.query(PlayerScore).filter(
+            PlayerScore.match_id == match_id
+        ).delete()
+
+        # Delete the match
+        db.delete(match)
+        db.commit()
+
+        return {
+            "message": f"Successfully deleted match {match_id}",
+            "match_id": match_id,
+            "league_id": match.league_id,
+            "week_number": match.week_number
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete match: {str(e)}"
+        )
