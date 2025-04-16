@@ -53,6 +53,6 @@ def delete_team(db: Session, team_id: int):
 
 def delete_unassigned_players(db: Session):
     logging.info("Deleting unassigned players")
-    result = db.query(Player).filter(Player.team_id is None).delete()
+    result = db.query(Player).filter(Player.team_id.is_(None)).delete()
     db.commit()
     return result

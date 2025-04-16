@@ -6,7 +6,7 @@ from typing import Optional, List
 
 
 class PlayerBase(BaseModel):
-    id: int
+    id: Optional[int] = None
     first_name: str
     last_name: str
     league_average: Optional[float] = None
@@ -24,7 +24,7 @@ class Player(PlayerBase):
         from_attributes = True
 
 class TeamBase(BaseModel):
-    id: int
+    id: Optional[int] = None
     name: str
     players: List[PlayerBase]
 
